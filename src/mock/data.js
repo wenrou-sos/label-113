@@ -33,6 +33,21 @@ export const mockTags = [
 export const drinkTypes = ['啤酒', '白酒', '红酒', '洋酒', '鸡尾酒', '混合']
 export const talentTypes = ['不需要', '唱歌', '跳舞', '讲段子', '划拳', '陪聊', '游戏陪玩', '多种才艺']
 
+export const presetAreas = [
+  { name: '人民广场', lat: 31.2304, lng: 121.4737, address: '上海市黄浦区人民广场' },
+  { name: '静安寺', lat: 31.2237, lng: 121.4455, address: '上海市静安区静安寺' },
+  { name: '陆家嘴', lat: 31.2375, lng: 121.5055, address: '上海市浦东新区陆家嘴' },
+  { name: '南京路', lat: 31.2397, lng: 121.4905, address: '上海市黄浦区南京东路' },
+  { name: '新天地', lat: 31.2204, lng: 121.4756, address: '上海市黄浦区新天地' },
+  { name: '淮海路', lat: 31.2240, lng: 121.4710, address: '上海市黄浦区淮海中路' },
+  { name: '徐家汇', lat: 31.1940, lng: 121.4370, address: '上海市徐汇区徐家汇' },
+  { name: '五角场', lat: 31.2984, lng: 121.5131, address: '上海市杨浦区五角场' },
+  { name: '虹口足球场', lat: 31.2768, lng: 121.4835, address: '上海市虹口区虹口足球场' },
+  { name: '前滩太古里', lat: 31.1768, lng: 121.5100, address: '上海市浦东新区前滩太古里' },
+  { name: '虹桥', lat: 31.1937, lng: 121.3905, address: '上海市长宁区虹桥' },
+  { name: '古北', lat: 31.1980, lng: 121.3700, address: '上海市长宁区古北' }
+]
+
 export const mockHotspots = [
   {
     id: 'HS001',

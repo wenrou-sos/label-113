@@ -5,7 +5,8 @@ const STORAGE_KEYS = {
   USER_STATS: 'drink_helper_user_stats',
   USER_TAGS: 'drink_helper_user_tags',
   ORDERS: 'drink_helper_orders',
-  PREFERENCES: 'drink_helper_preferences'
+  PREFERENCES: 'drink_helper_preferences',
+  SAVED_ADDRESSES: 'drink_helper_saved_addresses'
 }
 
 const loadFromStorage = (key, defaultValue) => {
@@ -41,6 +42,7 @@ export const useUserStore = defineStore('user', {
     userStats: loadFromStorage(STORAGE_KEYS.USER_STATS, { ...mockUserStats }),
     tags: loadFromStorage(STORAGE_KEYS.USER_TAGS, [...mockTags]),
     preferences: loadFromStorage(STORAGE_KEYS.PREFERENCES, { drinkTypes: [], talentTypes: [] }),
+    savedAddresses: loadFromStorage(STORAGE_KEYS.SAVED_ADDRESSES, []),
     currentLocation: {
       lat: 31.2304,
       lng: 121.4737,
@@ -53,6 +55,9 @@ export const useUserStore = defineStore('user', {
     },
     preferenceCount: (state) => {
       return state.preferences.drinkTypes.length + state.preferences.talentTypes.length
+    },
+    savedAddressCount: (state) => {
+      return state.savedAddresses.length
     },
     levelInfo: (state) => {
       const totalOrders = state.userStats.totalOrders
@@ -123,13 +128,39 @@ export const useUserStore = defineStore('user', {
       this.preferences = { drinkTypes: [], talentTypes: [] }
       saveToStorage(STORAGE_KEYS.PREFERENCES, this.preferences)
     },
+    addSavedAddress({ name, lat, lng, address }) {
+      const trimmedName = (name || '').trim()
+      if (!trimmedName) return false
+      const exists = this.savedAddresses.some(
+        (a) => a.name === trimmedName && a.lat === lat && a.lng === lng
+      )
+      if (exists) return false
+      this.savedAddresses.push({
+        id: 'ADDR' + Date.now(),
+        name: trimmedName,
+        lat,
+        lng,
+        address: address || trimmedName
+      })
+      saveToStorage(STORAGE_KEYS.SAVED_ADDRESSES, this.savedAddresses)
+      return true
+    },
+    removeSavedAddress(id) {
+      this.savedAddresses = this.savedAddresses.filter((a) => a.id !== id)
+      saveToStorage(STORAGE_KEYS.SAVED_ADDRESSES, this.savedAddresses)
+    },
+    setCurrentLocation({ lat, lng, address }) {
+      this.currentLocation = { lat, lng, address }
+    },
     resetData() {
       this.userStats = { ...mockUserStats }
       this.tags = [...mockTags]
       this.preferences = { drinkTypes: [], talentTypes: [] }
+      this.savedAddresses = []
       localStorage.removeItem(STORAGE_KEYS.USER_STATS)
       localStorage.removeItem(STORAGE_KEYS.USER_TAGS)
       localStorage.removeItem(STORAGE_KEYS.PREFERENCES)
+      localStorage.removeItem(STORAGE_KEYS.SAVED_ADDRESSES)
     }
   }
 })

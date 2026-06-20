@@ -114,6 +114,17 @@
             <span class="menu-arrow">›</span>
           </span>
         </div>
+        <div class="menu-item" @click="openAddressManager">
+          <div class="menu-left">
+            <span class="menu-icon">📍</span>
+            <span class="menu-text">常用地址</span>
+          </div>
+          <span class="menu-extra">
+            <span v-if="savedAddressCount" class="pref-summary">已收藏{{ savedAddressCount }}个</span>
+            <span v-else class="pref-summary unactive">未添加</span>
+            <span class="menu-arrow">›</span>
+          </span>
+        </div>
       </div>
 
       <div class="menu-card">
@@ -357,6 +368,89 @@
       </div>
     </nut-popup>
 
+    <nut-popup
+      v-model:visible="showAddressPopup"
+      position="bottom"
+      round
+      :style="{ height: '80%' }"
+    >
+      <div class="addr-popup">
+        <div class="addr-header">
+          <div class="addr-title">常用地址管理</div>
+          <div class="addr-close" @click="showAddressPopup = false">×</div>
+        </div>
+
+        <div class="addr-body">
+          <div v-if="savedAddresses.length" class="addr-section">
+            <div class="addr-section-title">已收藏的地址（{{ savedAddresses.length }}）</div>
+            <div class="addr-card">
+              <div
+                v-for="addr in savedAddresses"
+                :key="addr.id"
+                class="addr-item"
+              >
+                <div class="addr-item-icon">📍</div>
+                <div class="addr-item-info">
+                  <div class="addr-item-name">{{ addr.name }}</div>
+                  <div class="addr-item-text">{{ addr.address }}</div>
+                </div>
+                <div class="addr-item-del" @click="handleRemoveAddress(addr.id)">删除</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="addr-section">
+            <div class="addr-section-title">
+              <span>添加常用地址</span>
+              <span class="addr-section-tip">起个名字，方便首页快速切换</span>
+            </div>
+            <div class="addr-card">
+              <div class="addr-input-row">
+                <input
+                  v-model="newAddrName"
+                  class="addr-input"
+                  type="text"
+                  maxlength="12"
+                  placeholder="给地址起个名字（如：静安寺）"
+                />
+              </div>
+
+              <div class="addr-sub-title">选择常去区域</div>
+              <div class="addr-chips">
+                <span
+                  v-for="area in presetAreas"
+                  :key="area.name"
+                  class="addr-chip"
+                  :class="{ saved: isAreaSaved(area) }"
+                  @click="handleAddPreset(area)"
+                >
+                  {{ area.name }}
+                </span>
+              </div>
+
+              <div class="addr-save-current" @click="handleSaveCurrentAsAddress">
+                <span class="addr-save-icon">📌</span>
+                <span>把当前位置存为常用地址</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="addr-tip-card">
+            <div class="addr-tip-icon">💡</div>
+            <div class="addr-tip-text">
+              收藏后回到首页，点击顶部地址栏即可一键切换位置，地图与附近酒局都会跟着定位走，不用再手动拖地图。
+            </div>
+          </div>
+        </div>
+
+        <div class="addr-footer">
+          <nut-button size="large" type="primary" @click="showAddressPopup = false">
+            完成
+          </nut-button>
+        </div>
+      </div>
+    </nut-popup>
+
     <nut-tabbar bottom safe-area-inset-bottom>
       <nut-tabbar-item tab-title="首页" icon="map" to="/home" />
       <nut-tabbar-item tab-title="我的" icon="my" to="/profile" />
@@ -368,7 +462,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore, useOrderStore } from '@/store'
-import { drinkTypes, talentTypes } from '@/mock/data'
+import { drinkTypes, talentTypes, presetAreas } from '@/mock/data'
 import { showToast } from '@nutui/nutui'
 
 const router = useRouter()
@@ -381,6 +475,8 @@ const levelInfo = computed(() => userStore.levelInfo)
 const sortedTags = computed(() => userStore.sortedTags)
 const hasPreferences = computed(() => userStore.hasPreferences)
 const preferenceCount = computed(() => userStore.preferenceCount)
+const savedAddresses = computed(() => userStore.savedAddresses)
+const savedAddressCount = computed(() => userStore.savedAddressCount)
 
 const drinkTypeOptions = drinkTypes
 const talentTypeOptions = talentTypes.filter((t) => t !== '不需要')
@@ -388,6 +484,9 @@ const talentTypeOptions = talentTypes.filter((t) => t !== '不需要')
 const showPreferencePopup = ref(false)
 const tempDrinkTypes = ref([])
 const tempTalentTypes = ref([])
+
+const showAddressPopup = ref(false)
+const newAddrName = ref('')
 
 const showCalendarPopup = ref(false)
 const showDayDetailPopup = ref(false)
@@ -594,6 +693,64 @@ const handleSavePref = () => {
 const handleClearPref = () => {
   tempDrinkTypes.value = []
   tempTalentTypes.value = []
+}
+
+const openAddressManager = () => {
+  newAddrName.value = ''
+  showAddressPopup.value = true
+}
+
+const isAreaSaved = (area) => {
+  return savedAddresses.value.some(
+    (a) => a.lat === area.lat && a.lng === area.lng
+  )
+}
+
+const resolveAddrName = (fallback) => {
+  const name = newAddrName.value.trim()
+  return name || fallback
+}
+
+const handleAddPreset = (area) => {
+  if (isAreaSaved(area)) {
+    showToast({ content: '该地址已收藏' })
+    return
+  }
+  const name = resolveAddrName(area.name)
+  const ok = userStore.addSavedAddress({
+    name,
+    lat: area.lat,
+    lng: area.lng,
+    address: area.address
+  })
+  if (ok) {
+    newAddrName.value = ''
+    showToast({ content: '已收藏「' + name + '」', type: 'success' })
+  } else {
+    showToast({ content: '该地址已收藏' })
+  }
+}
+
+const handleSaveCurrentAsAddress = () => {
+  const loc = userStore.currentLocation
+  const name = resolveAddrName('我的位置')
+  const ok = userStore.addSavedAddress({
+    name,
+    lat: loc.lat,
+    lng: loc.lng,
+    address: loc.address
+  })
+  if (ok) {
+    newAddrName.value = ''
+    showToast({ content: '已收藏「' + name + '」', type: 'success' })
+  } else {
+    showToast({ content: '该地址已收藏' })
+  }
+}
+
+const handleRemoveAddress = (id) => {
+  userStore.removeSavedAddress(id)
+  showToast({ content: '已删除' })
 }
 
 const getTagSize = (index) => {
@@ -1492,6 +1649,229 @@ const showAbout = () => {
 
     :deep(.nut-button) {
       flex: 1;
+    }
+  }
+}
+
+.addr-popup {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fa;
+
+  .addr-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+
+    .addr-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .addr-close {
+      font-size: 24px;
+      color: #999;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+  }
+
+  .addr-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+  }
+
+  .addr-section {
+    margin-bottom: 12px;
+  }
+
+  .addr-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 10px;
+
+    .addr-section-tip {
+      font-size: 11px;
+      font-weight: normal;
+      color: #bbb;
+    }
+  }
+
+  .addr-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+  }
+
+  .addr-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f5f5f5;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .addr-item-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e6f4ff;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+
+    .addr-item-info {
+      flex: 1;
+      min-width: 0;
+
+      .addr-item-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 2px;
+      }
+
+      .addr-item-text {
+        font-size: 12px;
+        color: #999;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .addr-item-del {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: #ff4d4f;
+      background: #fff1f0;
+      border-radius: 12px;
+    }
+  }
+
+  .addr-input-row {
+    margin-bottom: 14px;
+  }
+
+  .addr-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    font-size: 14px;
+    color: #333;
+    background: #f5f5f5;
+    border: 1px solid #f0f0f0;
+    border-radius: 10px;
+    outline: none;
+
+    &::placeholder {
+      color: #bbb;
+    }
+
+    &:focus {
+      border-color: #1989fa;
+      background: #fff;
+    }
+  }
+
+  .addr-sub-title {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 10px;
+  }
+
+  .addr-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .addr-chip {
+    padding: 7px 16px;
+    border-radius: 18px;
+    background: #f5f5f5;
+    font-size: 13px;
+    color: #666;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+
+    &.saved {
+      background: rgba(25, 137, 250, 0.1);
+      color: #1989fa;
+      border-color: #1989fa;
+      font-weight: 600;
+    }
+  }
+
+  .addr-save-current {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px;
+    background: rgba(25, 137, 250, 0.08);
+    border-radius: 10px;
+    font-size: 13px;
+    color: #1989fa;
+    font-weight: 600;
+
+    .addr-save-icon {
+      font-size: 15px;
+    }
+  }
+
+  .addr-tip-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #fffbe6;
+    border-radius: 10px;
+    border: 1px solid #ffe58f;
+
+    .addr-tip-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .addr-tip-text {
+      font-size: 12px;
+      color: #8c6e2a;
+      line-height: 1.6;
+    }
+  }
+
+  .addr-footer {
+    flex-shrink: 0;
+    padding: 12px 16px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
+
+    :deep(.nut-button) {
+      width: 100%;
     }
   }
 }

@@ -3,9 +3,10 @@
     <div class="map-container" ref="mapContainer"></div>
 
     <div class="top-bar">
-      <div class="location-info" @click="refreshLocation">
+      <div class="location-info" @click="showAddressSwitcher = true">
         <div class="location-icon">📍</div>
         <div class="location-text ellipsis">{{ currentLocation?.address || '定位中...' }}</div>
+        <div class="location-switch">切换<span class="switch-arrow">›</span></div>
       </div>
       <div class="refresh-btn" @click="handleRefresh">
         <span :class="{ rotating: isRefreshing }">🔄</span>
@@ -205,6 +206,59 @@
       </div>
     </nut-popup>
 
+    <nut-popup
+      v-model:visible="showAddressSwitcher"
+      position="bottom"
+      round
+      :style="{ height: '55%' }"
+    >
+      <div class="addr-switcher">
+        <div class="switcher-header">
+          <div class="switcher-title">切换位置</div>
+          <div class="switcher-close" @click="showAddressSwitcher = false">×</div>
+        </div>
+
+        <div class="switcher-body">
+          <div
+            class="switcher-item"
+            :class="{ active: isCurrentLocation(defaultLocation) }"
+            @click="handleSelectAddress(defaultLocation)"
+          >
+            <div class="switcher-icon">🎯</div>
+            <div class="switcher-info">
+              <div class="switcher-name">自动定位</div>
+              <div class="switcher-sub">{{ defaultLocation.address }}</div>
+            </div>
+            <span v-if="isCurrentLocation(defaultLocation)" class="switcher-check">✓</span>
+          </div>
+
+          <template v-if="savedAddresses.length">
+            <div class="switcher-divider"></div>
+            <div
+              v-for="addr in savedAddresses"
+              :key="addr.id"
+              class="switcher-item"
+              :class="{ active: isCurrentLocation(addr) }"
+              @click="handleSelectAddress(addr)"
+            >
+              <div class="switcher-icon">📍</div>
+              <div class="switcher-info">
+                <div class="switcher-name">{{ addr.name }}</div>
+                <div class="switcher-sub">{{ addr.address }}</div>
+              </div>
+              <span v-if="isCurrentLocation(addr)" class="switcher-check">✓</span>
+            </div>
+          </template>
+
+          <div v-else class="switcher-empty">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">还没有常用地址</div>
+            <div class="empty-tip">去「我的 - 常用地址」收藏几个常去的地方吧</div>
+          </div>
+        </div>
+      </div>
+    </nut-popup>
+
     <nut-tabbar bottom safe-area-inset-bottom>
       <nut-tabbar-item tab-title="首页" icon="map" to="/home" />
       <nut-tabbar-item tab-title="我的" icon="my" to="/profile" />
@@ -227,6 +281,7 @@ const mapContainer = ref(null)
 const bottomPanel = ref(null)
 const orderList = ref(null)
 let map = null
+let userMarker = null
 const markers = []
 
 const isRefreshing = ref(false)
@@ -240,6 +295,13 @@ const pullTipText = ref('下拉可以刷新')
 const startY = ref(0)
 const pulling = ref(false)
 const showActiveOrdersPopup = ref(false)
+const showAddressSwitcher = ref(false)
+
+const defaultLocation = {
+  lat: 31.2304,
+  lng: 121.4737,
+  address: '上海市黄浦区人民广场'
+}
 
 const filterTabs = [
   { label: '全部', value: 'all' },
@@ -254,6 +316,7 @@ const pendingHotspots = computed(() => orderStore.pendingHotspots)
 const activeOrders = computed(() => orderStore.activeOrders)
 const hasActiveOrders = computed(() => orderStore.hasActiveOrders)
 const hasPreferences = computed(() => userStore.hasPreferences)
+const savedAddresses = computed(() => userStore.savedAddresses)
 
 const getMatchScore = (hotspot) => {
   const prefs = userStore.preferences
@@ -264,14 +327,35 @@ const getMatchScore = (hotspot) => {
   return score
 }
 
+const toRad = (d) => (d * Math.PI) / 180
+
+const getDistance = (lat1, lng1, lat2, lng2) => {
+  const R = 6371
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+const distanceTo = (hotspot) => {
+  const loc = currentLocation.value
+  return getDistance(loc.lat, loc.lng, hotspot.lat, hotspot.lng)
+}
+
 const filteredHotspots = computed(() => {
   let list = pendingHotspots.value
   if (activeFilter.value !== 'all') {
     list = list.filter((h) => getPriceClass(h.price) === `price-${activeFilter.value}`)
   }
-  if (userStore.hasPreferences) {
-    list = [...list].sort((a, b) => getMatchScore(b) - getMatchScore(a))
-  }
+  list = [...list].sort((a, b) => {
+    if (userStore.hasPreferences) {
+      const diff = getMatchScore(b) - getMatchScore(a)
+      if (diff !== 0) return diff
+    }
+    return distanceTo(a) - distanceTo(b)
+  })
   return list
 })
 
@@ -296,7 +380,7 @@ const initMap = async () => {
     maxZoom: 19
   }).addTo(map)
 
-  L.circleMarker([currentLocation.value.lat, currentLocation.value.lng], {
+  userMarker = L.circleMarker([currentLocation.value.lat, currentLocation.value.lng], {
     radius: 12,
     fillColor: '#1989fa',
     color: '#fff',
@@ -375,8 +459,19 @@ const handleRefresh = async () => {
   }, 1000)
 }
 
-const refreshLocation = () => {
-  showToast({ content: '定位已更新' })
+const isCurrentLocation = (loc) => {
+  const cur = currentLocation.value
+  return cur.lat === loc.lat && cur.lng === loc.lng
+}
+
+const handleSelectAddress = (loc) => {
+  if (isCurrentLocation(loc)) {
+    showAddressSwitcher.value = false
+    return
+  }
+  userStore.setCurrentLocation({ lat: loc.lat, lng: loc.lng, address: loc.address })
+  showAddressSwitcher.value = false
+  showToast({ content: '已切换到「' + (loc.name || loc.address) + '」', type: 'success' })
 }
 
 const handleScroll = (e) => {
@@ -465,6 +560,18 @@ watch(
   }
 )
 
+watch(
+  () => userStore.currentLocation,
+  (loc) => {
+    if (!map || !loc) return
+    map.setView([loc.lat, loc.lng], 14, { animate: true })
+    if (userMarker) {
+      userMarker.setLatLng([loc.lat, loc.lng])
+    }
+  },
+  { deep: true }
+)
+
 onMounted(() => {
   initMap()
   if (orderList.value) {
@@ -525,6 +632,24 @@ onMounted(() => {
   flex: 1;
   font-size: 13px;
   color: #333;
+}
+
+.location-switch {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #1989fa;
+  background: rgba(25, 137, 250, 0.1);
+  border-radius: 10px;
+
+  .switch-arrow {
+    margin-left: 2px;
+    font-size: 13px;
+    line-height: 1;
+  }
 }
 
 .refresh-btn {
@@ -1066,6 +1191,140 @@ onMounted(() => {
     color: #999;
     background: #fff;
     border-top: 1px solid #f0f0f0;
+  }
+}
+
+.addr-switcher {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fa;
+
+  .switcher-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+
+    .switcher-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .switcher-close {
+      font-size: 24px;
+      color: #999;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+  }
+
+  .switcher-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+  }
+
+  .switcher-item {
+    display: flex;
+    align-items: center;
+    padding: 14px;
+    background: #fff;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+
+    &.active {
+      border-color: #1989fa;
+      background: rgba(25, 137, 250, 0.06);
+    }
+
+    .switcher-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e6f4ff;
+      border-radius: 10px;
+      font-size: 18px;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+
+    .switcher-info {
+      flex: 1;
+      min-width: 0;
+
+      .switcher-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 2px;
+      }
+
+      .switcher-sub {
+        font-size: 12px;
+        color: #999;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .switcher-check {
+      flex-shrink: 0;
+      margin-left: 8px;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1989fa;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 13px;
+    }
+  }
+
+  .switcher-divider {
+    height: 1px;
+    background: #eee;
+    margin: 6px 0 12px;
+  }
+
+  .switcher-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 20px;
+
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .empty-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .empty-tip {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+    }
   }
 }
 </style>
