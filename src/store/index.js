@@ -25,6 +25,16 @@ const saveToStorage = (key, value) => {
   }
 }
 
+const getLocalDateKey = (timeStr) => {
+  if (!timeStr) return null
+  const d = new Date(String(timeStr).replace(' ', 'T'))
+  if (isNaN(d.getTime())) return null
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export const useUserStore = defineStore('user', {
   state: () => ({
     userInfo: { ...mockUser },
@@ -168,8 +178,8 @@ export const useOrderStore = defineStore('order', {
     calendarDailyData: (state) => {
       const dateMap = {}
       state.orders.forEach((order) => {
-        if (order.status === 'pending') return
-        const dateKey = order.acceptTime ? order.acceptTime.substring(0, 10) : null
+        if (order.status !== 'completed') return
+        const dateKey = getLocalDateKey(order.acceptTime)
         if (!dateKey) return
         if (!dateMap[dateKey]) {
           dateMap[dateKey] = { orders: [], count: 0, earnings: 0 }
@@ -184,8 +194,8 @@ export const useOrderStore = defineStore('order', {
     calendarMaxDailyEarnings: (state) => {
       const dateMap = {}
       state.orders.forEach((order) => {
-        if (order.status === 'pending') return
-        const dateKey = order.acceptTime ? order.acceptTime.substring(0, 10) : null
+        if (order.status !== 'completed') return
+        const dateKey = getLocalDateKey(order.acceptTime)
         if (!dateKey) return
         const ddFee = order.result?.designatedDriverFee || 0
         dateMap[dateKey] = (dateMap[dateKey] || 0) + (order.price || 0) + ddFee
