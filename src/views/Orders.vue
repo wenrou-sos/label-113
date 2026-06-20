@@ -19,7 +19,7 @@
       </div>
     </div>
 
-    <div class="tag-filter-bar" v-if="allOrderTags.length > 0">
+    <div class="tag-filter-bar" v-if="currentTabTags.length > 0">
       <div class="filter-label">🏷️ 按标签筛选：</div>
       <div class="filter-scroll">
         <div class="filter-tags">
@@ -30,7 +30,7 @@
             全部
           </span>
           <span
-            v-for="tag in allOrderTags"
+            v-for="tag in currentTabTags"
             :key="tag.name"
             :class="['filter-tag', { active: selectedTag === tag.name }]"
             @click="toggleFilterTag(tag.name)"
@@ -190,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useOrderStore } from '@/store'
 import { showToast } from '@nutui/nutui'
 
@@ -218,6 +218,40 @@ const filteredOrders = computed(() => {
     orders = orders.filter((o) => o.tags && o.tags.includes(selectedTag.value))
   }
   return orders
+})
+
+const currentTabOrders = computed(() => {
+  let orders = orderStore.myOrders
+  if (activeTab.value === 'active') {
+    return orders.filter((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
+  }
+  if (activeTab.value === 'completed') {
+    return orders.filter((o) => o.status === 'completed')
+  }
+  return orders
+})
+
+const currentTabTags = computed(() => {
+  const counter = {}
+  currentTabOrders.value.forEach((o) => {
+    if (Array.isArray(o.tags)) {
+      o.tags.forEach((t) => {
+        counter[t] = (counter[t] || 0) + 1
+      })
+    }
+  })
+  return Object.keys(counter)
+    .map((name) => ({ name, count: counter[name] }))
+    .sort((a, b) => b.count - a.count)
+})
+
+watch(activeTab, () => {
+  if (selectedTag.value) {
+    const exists = currentTabTags.value.some((t) => t.name === selectedTag.value)
+    if (!exists) {
+      selectedTag.value = ''
+    }
+  }
 })
 
 const toggleFilterTag = (tagName) => {
