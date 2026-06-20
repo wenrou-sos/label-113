@@ -30,6 +30,7 @@
         <div class="panel-title">
           <span class="title-text">附近酒局</span>
           <span class="count-badge">{{ pendingHotspots.length }}单</span>
+          <span v-if="hasPreferences" class="pref-sort-badge">🎯 按偏好排序</span>
         </div>
         <div class="filter-tabs">
           <span
@@ -56,7 +57,12 @@
             </div>
           </div>
           <div class="card-main">
-            <div class="card-title ellipsis">{{ hotspot.title }}</div>
+            <div class="card-title-row">
+              <div class="card-title ellipsis">{{ hotspot.title }}</div>
+              <span v-if="getMatchScore(hotspot) > 0" class="match-badge">
+                擅长
+              </span>
+            </div>
             <div class="card-address ellipsis-2">{{ hotspot.address }}</div>
             <div class="card-tags">
               <span class="tag">{{ hotspot.drinkType }}</span>
@@ -247,11 +253,26 @@ const currentLocation = computed(() => userStore.currentLocation)
 const pendingHotspots = computed(() => orderStore.pendingHotspots)
 const activeOrders = computed(() => orderStore.activeOrders)
 const hasActiveOrders = computed(() => orderStore.hasActiveOrders)
+const hasPreferences = computed(() => userStore.hasPreferences)
+
+const getMatchScore = (hotspot) => {
+  const prefs = userStore.preferences
+  if (!prefs.drinkTypes.length && !prefs.talentTypes.length) return 0
+  let score = 0
+  if (prefs.drinkTypes.includes(hotspot.drinkType)) score += 2
+  if (hotspot.needTalent && prefs.talentTypes.includes(hotspot.talentType)) score += 1
+  return score
+}
 
 const filteredHotspots = computed(() => {
-  const list = pendingHotspots.value
-  if (activeFilter.value === 'all') return list
-  return list.filter((h) => getPriceClass(h.price) === `price-${activeFilter.value}`)
+  let list = pendingHotspots.value
+  if (activeFilter.value !== 'all') {
+    list = list.filter((h) => getPriceClass(h.price) === `price-${activeFilter.value}`)
+  }
+  if (userStore.hasPreferences) {
+    list = [...list].sort((a, b) => getMatchScore(b) - getMatchScore(a))
+  }
+  return list
 })
 
 const getPriceClass = (price) => {
@@ -583,6 +604,16 @@ onMounted(() => {
   border-radius: 10px;
 }
 
+.pref-sort-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: rgba(255, 107, 53, 0.12);
+  color: #ff6b35;
+  font-size: 11px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
 .filter-tabs {
   display: flex;
   gap: 8px;
@@ -658,11 +689,30 @@ onMounted(() => {
   min-width: 0;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  gap: 6px;
+}
+
 .card-title {
   font-size: 15px;
   font-weight: 600;
   color: #333;
-  margin-bottom: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.match-badge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  color: #fff;
+  font-size: 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(247, 147, 30, 0.35);
 }
 
 .card-address {

@@ -101,6 +101,51 @@
       </div>
     </div>
 
+    <div class="form-section">
+      <div class="section-title">
+        订单标签
+        <span class="section-tip">（选填）给这单打个标签，方便日后筛选</span>
+      </div>
+      <div class="form-card">
+        <div class="tag-suggest">
+          <div class="tag-label">推荐标签：</div>
+          <div class="tag-list">
+            <span
+              v-for="tag in suggestedOrderTags"
+              :key="tag"
+              :class="['suggest-tag', { selected: selectedOrderTags.includes(tag) }]"
+              @click="toggleSuggestedTag(tag)"
+            >
+              {{ tag }}
+            </span>
+          </div>
+        </div>
+
+        <div class="custom-tag-input">
+          <nut-input
+            v-model="customTagInput"
+            placeholder="自定义标签，如“客户大方”"
+            :max-length="8"
+            clearable
+            @keyup.enter="addCustomTag"
+          />
+          <nut-button type="primary" size="small" @click="addCustomTag">添加</nut-button>
+        </div>
+
+        <div class="selected-tags" v-if="selectedOrderTags.length > 0">
+          <span
+            v-for="tag in selectedOrderTags"
+            :key="tag"
+            class="selected-tag"
+            @click="removeTag(tag)"
+          >
+            {{ tag }}
+            <span class="remove-icon">×</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
     <div class="summary-section" v-if="order">
       <div class="section-title">本次收益</div>
       <div class="summary-card">
@@ -163,6 +208,10 @@ const formData = reactive({
 
 const quickTags = ['海量', '稳如泰山', '气氛组', '千杯不醉', '服务周到', '酒量惊人']
 
+const suggestedOrderTags = ['客户大方', '路太远', '氛围好', '酒品好', '客户挑剔', '环境优雅', '人多热闹', '小费多']
+const selectedOrderTags = ref([])
+const customTagInput = ref('')
+
 const driverFee = computed(() => {
   if (!formData.needDesignatedDriver) return 0
   return designatedDriverFeeList[formData.driverFeeIndex]?.fee || 0
@@ -189,6 +238,39 @@ const addQuickTag = (tag) => {
   }
 }
 
+const toggleSuggestedTag = (tag) => {
+  const idx = selectedOrderTags.value.indexOf(tag)
+  if (idx > -1) {
+    selectedOrderTags.value.splice(idx, 1)
+  } else {
+    selectedOrderTags.value.push(tag)
+  }
+}
+
+const addCustomTag = () => {
+  const name = customTagInput.value.trim()
+  if (!name) {
+    showToast({ content: '请输入标签名称' })
+    return
+  }
+  if (name.length > 8) {
+    showToast({ content: '标签最多8个字' })
+    return
+  }
+  if (selectedOrderTags.value.includes(name)) {
+    showToast({ content: '该标签已添加' })
+    customTagInput.value = ''
+    return
+  }
+  selectedOrderTags.value.push(name)
+  customTagInput.value = ''
+}
+
+const removeTag = (tag) => {
+  const idx = selectedOrderTags.value.indexOf(tag)
+  if (idx > -1) selectedOrderTags.value.splice(idx, 1)
+}
+
 const handleSubmit = async () => {
   if (!isFormValid.value) {
     showToast({ content: '请填写完整的战果信息' })
@@ -210,6 +292,10 @@ const handleSubmit = async () => {
     }
 
     orderStore.completeOrder(order.value.orderId || order.value.id, result)
+
+    if (selectedOrderTags.value.length > 0) {
+      orderStore.addOrderTags(order.value.orderId || order.value.id, selectedOrderTags.value)
+    }
 
     const totalAmount = order.value.price + driverFee.value
     const isGoodReview = checkGoodReview(formData.review)
@@ -397,6 +483,69 @@ onMounted(() => {
 
   &:active {
     background: #d6e8ff;
+  }
+}
+
+.section-tip {
+  font-size: 12px;
+  color: #999;
+  font-weight: normal;
+}
+
+.suggest-tag {
+  padding: 5px 12px;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 12px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &.selected {
+    background: #e6f7ff;
+    color: #1989fa;
+    border-color: #1989fa;
+    font-weight: 500;
+  }
+}
+
+.custom-tag-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  align-items: center;
+
+  :deep(.nut-input) {
+    flex: 1;
+  }
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed #eee;
+}
+
+.selected-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px 5px 12px;
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  color: #fff;
+  font-size: 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  .remove-icon {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.85;
   }
 }
 

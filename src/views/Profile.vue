@@ -93,6 +93,17 @@
           </div>
           <span class="menu-arrow">›</span>
         </div>
+        <div class="menu-item" @click="openPreference">
+          <div class="menu-left">
+            <span class="menu-icon">🎯</span>
+            <span class="menu-text">偏好订阅</span>
+          </div>
+          <span class="menu-extra">
+            <span v-if="hasPreferences" class="pref-summary">已订阅{{ preferenceCount }}项</span>
+            <span v-else class="pref-summary unactive">未设置</span>
+            <span class="menu-arrow">›</span>
+          </span>
+        </div>
       </div>
 
       <div class="menu-card">
@@ -120,6 +131,72 @@
       </div>
     </div>
 
+    <nut-popup
+      v-model:visible="showPreferencePopup"
+      position="bottom"
+      round
+      :style="{ height: '78%' }"
+    >
+      <div class="pref-popup">
+        <div class="pref-header">
+          <div class="pref-title">偏好订阅</div>
+          <div class="pref-close" @click="showPreferencePopup = false">×</div>
+        </div>
+
+        <div class="pref-body">
+          <div class="pref-section">
+            <div class="pref-section-title">
+              <span>🍺 擅长酒水类型</span>
+              <span class="pref-section-tip">可多选</span>
+            </div>
+            <div class="pref-chips">
+              <span
+                v-for="item in drinkTypeOptions"
+                :key="item"
+                :class="['pref-chip', { active: tempDrinkTypes.includes(item) }]"
+                @click="toggleDrinkType(item)"
+              >
+                {{ item }}
+              </span>
+            </div>
+          </div>
+
+          <div class="pref-section">
+            <div class="pref-section-title">
+              <span>🎤 擅长才艺类型</span>
+              <span class="pref-section-tip">可多选</span>
+            </div>
+            <div class="pref-chips">
+              <span
+                v-for="item in talentTypeOptions"
+                :key="item"
+                :class="['pref-chip', { active: tempTalentTypes.includes(item) }]"
+                @click="toggleTalentType(item)"
+              >
+                {{ item }}
+              </span>
+            </div>
+          </div>
+
+          <div class="pref-tip-card">
+            <div class="pref-tip-icon">💡</div>
+            <div class="pref-tip-text">
+              设置后，首页“附近酒局”将按匹配度优先排序，擅长的单子会置顶并标记，让您一眼看到。
+            </div>
+          </div>
+        </div>
+
+        <div class="pref-footer">
+          <nut-button size="large" type="default" @click="handleClearPref">
+            清空
+          </nut-button>
+          <nut-button size="large" type="primary" @click="handleSavePref">
+            保存设置
+          </nut-button>
+        </div>
+      </div>
+    </nut-popup>
+
     <nut-tabbar bottom safe-area-inset-bottom>
       <nut-tabbar-item tab-title="首页" icon="map" to="/home" />
       <nut-tabbar-item tab-title="我的" icon="my" to="/profile" />
@@ -128,9 +205,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/store'
+import { drinkTypes, talentTypes } from '@/mock/data'
 import { showToast } from '@nutui/nutui'
 
 const router = useRouter()
@@ -140,6 +218,54 @@ const userInfo = computed(() => userStore.userInfo)
 const userStats = computed(() => userStore.userStats)
 const levelInfo = computed(() => userStore.levelInfo)
 const sortedTags = computed(() => userStore.sortedTags)
+const hasPreferences = computed(() => userStore.hasPreferences)
+const preferenceCount = computed(() => userStore.preferenceCount)
+
+const drinkTypeOptions = drinkTypes
+const talentTypeOptions = talentTypes.filter((t) => t !== '不需要')
+
+const showPreferencePopup = ref(false)
+const tempDrinkTypes = ref([])
+const tempTalentTypes = ref([])
+
+const openPreference = () => {
+  tempDrinkTypes.value = [...userStore.preferences.drinkTypes]
+  tempTalentTypes.value = [...userStore.preferences.talentTypes]
+  showPreferencePopup.value = true
+}
+
+const toggleDrinkType = (item) => {
+  const idx = tempDrinkTypes.value.indexOf(item)
+  if (idx > -1) {
+    tempDrinkTypes.value.splice(idx, 1)
+  } else {
+    tempDrinkTypes.value.push(item)
+  }
+}
+
+const toggleTalentType = (item) => {
+  const idx = tempTalentTypes.value.indexOf(item)
+  if (idx > -1) {
+    tempTalentTypes.value.splice(idx, 1)
+  } else {
+    tempTalentTypes.value.push(item)
+  }
+}
+
+const handleSavePref = () => {
+  userStore.setPreferences(tempDrinkTypes.value, tempTalentTypes.value)
+  showPreferencePopup.value = false
+  if (tempDrinkTypes.value.length === 0 && tempTalentTypes.value.length === 0) {
+    showToast({ content: '已清空偏好', type: 'success' })
+  } else {
+    showToast({ content: '偏好保存成功', type: 'success' })
+  }
+}
+
+const handleClearPref = () => {
+  tempDrinkTypes.value = []
+  tempTalentTypes.value = []
+}
 
 const getTagSize = (index) => {
   const baseSize = 12
@@ -416,8 +542,143 @@ const showAbout = () => {
   color: #333;
 }
 
+.menu-extra {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pref-summary {
+  font-size: 12px;
+  color: #ff6b35;
+
+  &.unactive {
+    color: #bbb;
+  }
+}
+
 .menu-arrow {
   font-size: 20px;
   color: #ccc;
+}
+
+.pref-popup {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f7f8fa;
+
+  .pref-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+
+    .pref-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .pref-close {
+      font-size: 24px;
+      color: #999;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+  }
+
+  .pref-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+  }
+
+  .pref-section {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+
+    .pref-section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 12px;
+
+      .pref-section-tip {
+        font-size: 11px;
+        font-weight: normal;
+        color: #bbb;
+      }
+    }
+
+    .pref-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pref-chip {
+      padding: 7px 16px;
+      border-radius: 18px;
+      background: #f5f5f5;
+      font-size: 13px;
+      color: #666;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+
+      &.active {
+        background: rgba(255, 107, 53, 0.12);
+        color: #ff6b35;
+        border-color: #ff6b35;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .pref-tip-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #fffbe6;
+    border-radius: 10px;
+    border: 1px solid #ffe58f;
+
+    .pref-tip-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .pref-tip-text {
+      font-size: 12px;
+      color: #8c6e2a;
+      line-height: 1.6;
+    }
+  }
+
+  .pref-footer {
+    flex-shrink: 0;
+    display: flex;
+    padding: 12px 16px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+    gap: 12px;
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
+
+    :deep(.nut-button) {
+      flex: 1;
+    }
+  }
 }
 </style>

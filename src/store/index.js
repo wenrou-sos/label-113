@@ -4,7 +4,8 @@ import { mockUser, mockOrders, mockHotspots, mockUserStats, mockTags } from '@/m
 const STORAGE_KEYS = {
   USER_STATS: 'drink_helper_user_stats',
   USER_TAGS: 'drink_helper_user_tags',
-  ORDERS: 'drink_helper_orders'
+  ORDERS: 'drink_helper_orders',
+  PREFERENCES: 'drink_helper_preferences'
 }
 
 const loadFromStorage = (key, defaultValue) => {
@@ -29,6 +30,7 @@ export const useUserStore = defineStore('user', {
     userInfo: { ...mockUser },
     userStats: loadFromStorage(STORAGE_KEYS.USER_STATS, { ...mockUserStats }),
     tags: loadFromStorage(STORAGE_KEYS.USER_TAGS, [...mockTags]),
+    preferences: loadFromStorage(STORAGE_KEYS.PREFERENCES, { drinkTypes: [], talentTypes: [] }),
     currentLocation: {
       lat: 31.2304,
       lng: 121.4737,
@@ -36,6 +38,12 @@ export const useUserStore = defineStore('user', {
     }
   }),
   getters: {
+    hasPreferences: (state) => {
+      return state.preferences.drinkTypes.length > 0 || state.preferences.talentTypes.length > 0
+    },
+    preferenceCount: (state) => {
+      return state.preferences.drinkTypes.length + state.preferences.talentTypes.length
+    },
     levelInfo: (state) => {
       const totalOrders = state.userStats.totalOrders
       const goodRate = state.userStats.goodRate
@@ -94,11 +102,24 @@ export const useUserStore = defineStore('user', {
         saveToStorage(STORAGE_KEYS.USER_TAGS, this.tags)
       }
     },
+    setPreferences(drinkTypes, talentTypes) {
+      this.preferences = {
+        drinkTypes: [...drinkTypes],
+        talentTypes: [...talentTypes]
+      }
+      saveToStorage(STORAGE_KEYS.PREFERENCES, this.preferences)
+    },
+    clearPreferences() {
+      this.preferences = { drinkTypes: [], talentTypes: [] }
+      saveToStorage(STORAGE_KEYS.PREFERENCES, this.preferences)
+    },
     resetData() {
       this.userStats = { ...mockUserStats }
       this.tags = [...mockTags]
+      this.preferences = { drinkTypes: [], talentTypes: [] }
       localStorage.removeItem(STORAGE_KEYS.USER_STATS)
       localStorage.removeItem(STORAGE_KEYS.USER_TAGS)
+      localStorage.removeItem(STORAGE_KEYS.PREFERENCES)
     }
   }
 })
@@ -130,6 +151,19 @@ export const useOrderStore = defineStore('order', {
     },
     activeOrder: (state) => {
       return state.orders.find((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
+    },
+    allOrderTags: (state) => {
+      const counter = {}
+      state.orders.forEach((o) => {
+        if (Array.isArray(o.tags)) {
+          o.tags.forEach((t) => {
+            counter[t] = (counter[t] || 0) + 1
+          })
+        }
+      })
+      return Object.keys(counter)
+        .map((name) => ({ name, count: counter[name] }))
+        .sort((a, b) => b.count - a.count)
     }
   },
   actions: {
@@ -204,6 +238,18 @@ export const useOrderStore = defineStore('order', {
           )
           this.currentOrder = remainingActive.length > 0 ? remainingActive[0] : null
         }
+        this._persistOrders()
+      }
+    },
+    addOrderTags(orderId, tags) {
+      const order = this.orders.find((o) => o.id === orderId || o.orderId === orderId)
+      if (order) {
+        const unique = []
+        tags.forEach((t) => {
+          const name = (t || '').trim()
+          if (name && !unique.includes(name)) unique.push(name)
+        })
+        order.tags = unique
         this._persistOrders()
       }
     },
