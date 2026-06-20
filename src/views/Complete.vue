@@ -211,8 +211,9 @@ const handleSubmit = async () => {
 
     orderStore.completeOrder(order.value.orderId || order.value.id, result)
 
+    const totalAmount = order.value.price + driverFee.value
     const isGoodReview = checkGoodReview(formData.review)
-    userStore.updateStats(formData.drinkAmount, isGoodReview)
+    userStore.updateStats(formData.drinkAmount, isGoodReview, totalAmount)
 
     extractAndAddTags(formData.review)
 

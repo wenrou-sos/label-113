@@ -1,11 +1,34 @@
 import { defineStore } from 'pinia'
 import { mockUser, mockOrders, mockHotspots, mockUserStats, mockTags } from '@/mock/data'
 
+const STORAGE_KEYS = {
+  USER_STATS: 'drink_helper_user_stats',
+  USER_TAGS: 'drink_helper_user_tags',
+  ORDERS: 'drink_helper_orders'
+}
+
+const loadFromStorage = (key, defaultValue) => {
+  try {
+    const stored = localStorage.getItem(key)
+    return stored ? JSON.parse(stored) : defaultValue
+  } catch {
+    return defaultValue
+  }
+}
+
+const saveToStorage = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (e) {
+    console.warn('Storage save failed:', e)
+  }
+}
+
 export const useUserStore = defineStore('user', {
   state: () => ({
     userInfo: { ...mockUser },
-    userStats: { ...mockUserStats },
-    tags: [...mockTags],
+    userStats: loadFromStorage(STORAGE_KEYS.USER_STATS, { ...mockUserStats }),
+    tags: loadFromStorage(STORAGE_KEYS.USER_TAGS, [...mockTags]),
     currentLocation: {
       lat: 31.2304,
       lng: 121.4737,
@@ -52,29 +75,46 @@ export const useUserStore = defineStore('user', {
     }
   },
   actions: {
-    updateStats(drinkAmount, isGoodReview) {
+    updateStats(drinkAmount, isGoodReview, orderAmount = 0) {
       this.userStats.totalOrders += 1
       this.userStats.totalDrinkAmount = (parseFloat(this.userStats.totalDrinkAmount) + parseFloat(drinkAmount)).toFixed(1)
+      this.userStats.totalEarnings += orderAmount
       if (isGoodReview) {
         this.userStats.goodOrders += 1
       }
-      this.userStats.goodRate = Math.round((this.userStats.goodOrders / this.userStats.totalOrders) * 100)
+      this.userStats.goodRate = this.userStats.totalOrders > 0
+        ? Math.round((this.userStats.goodOrders / this.userStats.totalOrders) * 100)
+        : 0
+      saveToStorage(STORAGE_KEYS.USER_STATS, this.userStats)
     },
     addTag(tagName) {
       const existingTag = this.tags.find((t) => t.name === tagName)
       if (existingTag) {
         existingTag.count += 1
+        saveToStorage(STORAGE_KEYS.USER_TAGS, this.tags)
       }
+    },
+    resetData() {
+      this.userStats = { ...mockUserStats }
+      this.tags = [...mockTags]
+      localStorage.removeItem(STORAGE_KEYS.USER_STATS)
+      localStorage.removeItem(STORAGE_KEYS.USER_TAGS)
     }
   }
 })
 
 export const useOrderStore = defineStore('order', {
-  state: () => ({
-    hotspots: [...mockHotspots],
-    orders: [...mockOrders],
-    currentOrder: null
-  }),
+  state: () => {
+    const savedOrders = loadFromStorage(STORAGE_KEYS.ORDERS, [...mockOrders])
+    const firstActiveOrder = savedOrders.find((o) =>
+      ['accepted', 'arrived', 'servicing'].includes(o.status)
+    )
+    return {
+      hotspots: [...mockHotspots],
+      orders: savedOrders,
+      currentOrder: firstActiveOrder || null
+    }
+  },
   getters: {
     pendingHotspots: (state) => {
       return state.hotspots.filter((h) => h.status === 'pending')
@@ -82,11 +122,20 @@ export const useOrderStore = defineStore('order', {
     myOrders: (state) => {
       return state.orders.filter((o) => o.status !== 'pending')
     },
+    activeOrders: (state) => {
+      return state.orders.filter((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
+    },
+    hasActiveOrders: (state) => {
+      return state.orders.some((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
+    },
     activeOrder: (state) => {
       return state.orders.find((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
     }
   },
   actions: {
+    _persistOrders() {
+      saveToStorage(STORAGE_KEYS.ORDERS, this.orders)
+    },
     acceptOrder(hotspotId) {
       const hotspot = this.hotspots.find((h) => h.id === hotspotId)
       if (hotspot) {
@@ -103,6 +152,7 @@ export const useOrderStore = defineStore('order', {
         }
         this.orders.unshift(newOrder)
         this.currentOrder = newOrder
+        this._persistOrders()
         return newOrder
       }
       return null
@@ -113,6 +163,7 @@ export const useOrderStore = defineStore('order', {
         order.status = 'arrived'
         order.arriveTime = new Date().toISOString()
         this.currentOrder = order
+        this._persistOrders()
       }
     },
     startService(orderId) {
@@ -121,6 +172,7 @@ export const useOrderStore = defineStore('order', {
         order.status = 'servicing'
         order.startTime = new Date().toISOString()
         this.currentOrder = order
+        this._persistOrders()
       }
     },
     completeOrder(orderId, result) {
@@ -129,7 +181,30 @@ export const useOrderStore = defineStore('order', {
         order.status = 'completed'
         order.endTime = new Date().toISOString()
         order.result = result
-        this.currentOrder = null
+        const remainingActive = this.orders.filter((o) =>
+          ['accepted', 'arrived', 'servicing'].includes(o.status)
+        )
+        this.currentOrder = remainingActive.length > 0 ? remainingActive[0] : null
+        this._persistOrders()
+      }
+    },
+    setCurrentOrder(orderId) {
+      const order = this.orders.find((o) => o.id === orderId || o.orderId === orderId)
+      if (order) {
+        this.currentOrder = order
+      }
+    },
+    updateOrderStatus(orderId, status) {
+      const order = this.orders.find((o) => o.id === orderId || o.orderId === orderId)
+      if (order) {
+        order.status = status
+        if (status === 'cancelled') {
+          const remainingActive = this.orders.filter((o) =>
+            ['accepted', 'arrived', 'servicing'].includes(o.status)
+          )
+          this.currentOrder = remainingActive.length > 0 ? remainingActive[0] : null
+        }
+        this._persistOrders()
       }
     },
     ignoreHotspot(hotspotId) {
@@ -164,6 +239,11 @@ export const useOrderStore = defineStore('order', {
         }
       })
       this.hotspots.push(...additionalHotspots)
+    },
+    resetData() {
+      this.orders = [...mockOrders]
+      this.currentOrder = null
+      this._persistOrders()
     }
   }
 })

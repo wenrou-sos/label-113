@@ -12,6 +12,15 @@
       </div>
     </div>
 
+    <div class="active-orders-bar" v-if="hasActiveOrders" @click="showActiveOrdersPopup = true">
+      <div class="active-orders-icon">🚗</div>
+      <div class="active-orders-info">
+        <div class="active-orders-title">有 {{ activeOrders.length }} 笔订单进行中</div>
+        <div class="active-orders-sub">点击查看详情</div>
+      </div>
+      <div class="active-orders-arrow">›</div>
+    </div>
+
     <div class="bottom-panel" ref="bottomPanel">
       <div class="pull-refresh-tip" v-if="showPullTip">
         <span>{{ pullTipText }}</span>
@@ -145,6 +154,51 @@
       </div>
     </nut-popup>
 
+    <nut-popup
+      v-model:visible="showActiveOrdersPopup"
+      position="bottom"
+      round
+      :style="{ height: '60%' }"
+    >
+      <div class="active-orders-popup">
+        <div class="popup-header">
+          <div class="popup-title">进行中的订单</div>
+          <div class="popup-close" @click="showActiveOrdersPopup = false">×</div>
+        </div>
+
+        <div class="active-orders-list">
+          <div
+            v-for="order in activeOrders"
+            :key="order.orderId || order.id"
+            class="active-order-card"
+          >
+            <div class="order-status-tag" :class="order.status">
+              {{ getStatusText(order.status) }}
+            </div>
+            <div class="order-title">{{ order.title }}</div>
+            <div class="order-address ellipsis-2">{{ order.address }}</div>
+            <div class="order-meta">
+              <span class="order-type">{{ order.drinkType }}</span>
+              <span class="order-duration">{{ order.duration }}小时</span>
+              <span class="order-price">¥{{ order.price }}</span>
+            </div>
+            <div class="order-actions">
+              <nut-button size="small" type="default" @click="handleIgnoreOrder(order)">
+                取消订单
+              </nut-button>
+              <nut-button size="small" type="primary" @click="handleResumeOrder(order)">
+                继续服务
+              </nut-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="popup-tip">
+          💡 提示：您可以同时处理多笔订单，但请确保能准时到达
+        </div>
+      </div>
+    </nut-popup>
+
     <nut-tabbar bottom safe-area-inset-bottom>
       <nut-tabbar-item tab-title="首页" icon="map" to="/home" />
       <nut-tabbar-item tab-title="我的" icon="my" to="/profile" />
@@ -179,6 +233,7 @@ const showPullTip = ref(false)
 const pullTipText = ref('下拉可以刷新')
 const startY = ref(0)
 const pulling = ref(false)
+const showActiveOrdersPopup = ref(false)
 
 const filterTabs = [
   { label: '全部', value: 'all' },
@@ -190,6 +245,8 @@ const filterTabs = [
 
 const currentLocation = computed(() => userStore.currentLocation)
 const pendingHotspots = computed(() => orderStore.pendingHotspots)
+const activeOrders = computed(() => orderStore.activeOrders)
+const hasActiveOrders = computed(() => orderStore.hasActiveOrders)
 
 const filteredHotspots = computed(() => {
   const list = pendingHotspots.value
@@ -346,6 +403,38 @@ const handleTouchEnd = (e) => {
   }
   pulling.value = false
   showPullTip.value = false
+}
+
+const getStatusText = (status) => {
+  const map = {
+    accepted: '已接单',
+    arrived: '已签到',
+    servicing: '服务中'
+  }
+  return map[status] || status
+}
+
+const handleResumeOrder = (order) => {
+  orderStore.setCurrentOrder(order.orderId || order.id)
+  showActiveOrdersPopup.value = false
+  if (order.status === 'accepted') {
+    router.push('/navigation')
+  } else if (order.status === 'arrived' || order.status === 'servicing') {
+    router.push('/service')
+  }
+}
+
+const handleIgnoreOrder = async (order) => {
+  try {
+    await showDialog({
+      title: '取消订单',
+      content: '确定要取消这笔订单吗？',
+      okText: '确定取消',
+      cancelText: '再想想'
+    })
+    orderStore.updateOrderStatus(order.orderId || order.id, 'cancelled')
+    showToast({ content: '订单已取消', type: 'success' })
+  } catch (e) {}
 }
 
 watch(
@@ -765,6 +854,168 @@ onMounted(() => {
 
   :deep(.nut-button) {
     flex: 1;
+  }
+}
+
+.active-orders-bar {
+  position: absolute;
+  top: 110px;
+  left: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #ff6b35, #f7931e);
+  border-radius: 12px;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(247, 147, 30, 0.4);
+  gap: 12px;
+
+  .active-orders-icon {
+    font-size: 24px;
+  }
+
+  .active-orders-info {
+    flex: 1;
+
+    .active-orders-title {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .active-orders-sub {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 2px;
+    }
+  }
+
+  .active-orders-arrow {
+    font-size: 20px;
+    opacity: 0.8;
+  }
+}
+
+.active-orders-popup {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+
+  .popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+
+    .popup-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .popup-close {
+      font-size: 24px;
+      color: #999;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+  }
+
+  .active-orders-list {
+    flex: 1;
+    padding: 12px 16px;
+    overflow-y: auto;
+
+    .active-order-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      position: relative;
+
+      .order-status-tag {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+
+        &.accepted {
+          background: #e6f7ff;
+          color: #1890ff;
+        }
+
+        &.arrived {
+          background: #f6ffed;
+          color: #52c41a;
+        }
+
+        &.servicing {
+          background: #fff7e6;
+          color: #fa8c16;
+        }
+      }
+
+      .order-title {
+        font-size: 15px;
+        font-weight: 600;
+        margin-bottom: 6px;
+        padding-right: 70px;
+      }
+
+      .order-address {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.5;
+        margin-bottom: 10px;
+      }
+
+      .order-meta {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+
+        span {
+          padding: 3px 8px;
+          background: #f5f5f5;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #666;
+        }
+
+        .order-price {
+          background: #fff7e6;
+          color: #fa8c16;
+          font-weight: 600;
+        }
+      }
+
+      .order-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+    }
+  }
+
+  .popup-tip {
+    flex-shrink: 0;
+    padding: 12px 16px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+    text-align: center;
+    font-size: 13px;
+    color: #999;
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
   }
 }
 </style>
