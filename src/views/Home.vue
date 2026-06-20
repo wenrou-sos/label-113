@@ -220,16 +220,17 @@
 
         <div class="switcher-body">
           <div
-            class="switcher-item"
-            :class="{ active: isCurrentLocation(defaultLocation) }"
-            @click="handleSelectAddress(defaultLocation)"
+            v-if="geoSupported"
+            class="switcher-locate"
+            :class="{ locating: locating }"
+            @click="handleRelocate"
           >
-            <div class="switcher-icon">🎯</div>
+            <div class="switcher-icon">{{ locating ? '⏳' : '🎯' }}</div>
             <div class="switcher-info">
-              <div class="switcher-name">自动定位</div>
-              <div class="switcher-sub">{{ defaultLocation.address }}</div>
+              <div class="switcher-name">{{ locating ? '正在定位...' : '重新定位' }}</div>
+              <div class="switcher-sub">{{ hasRealLocation ? currentLocation.address : '获取当前设备位置' }}</div>
             </div>
-            <span v-if="isCurrentLocation(defaultLocation)" class="switcher-check">✓</span>
+            <span v-if="hasRealLocation && !locating" class="switcher-check">✓</span>
           </div>
 
           <template v-if="savedAddresses.length">
@@ -297,11 +298,9 @@ const pulling = ref(false)
 const showActiveOrdersPopup = ref(false)
 const showAddressSwitcher = ref(false)
 
-const defaultLocation = {
-  lat: 31.2304,
-  lng: 121.4737,
-  address: '上海市黄浦区人民广场'
-}
+const geoSupported = typeof navigator !== 'undefined' && !!navigator.geolocation
+const hasRealLocation = ref(false)
+const locating = ref(false)
 
 const filterTabs = [
   { label: '全部', value: 'all' },
@@ -452,8 +451,10 @@ const handleIgnore = () => {
 const handleRefresh = async () => {
   isRefreshing.value = true
   setTimeout(() => {
-    orderStore.refreshHotspots()
+    const loc = currentLocation.value
+    orderStore.refreshHotspots({ lat: loc.lat, lng: loc.lng })
     renderHotspots()
+    hasMore.value = true
     isRefreshing.value = false
     showToast({ content: '刷新成功', type: 'success' })
   }, 1000)
@@ -474,6 +475,59 @@ const handleSelectAddress = (loc) => {
   showToast({ content: '已切换到「' + (loc.name || loc.address) + '」', type: 'success' })
 }
 
+const reverseGeocode = async (lat, lng) => {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18`,
+      { headers: { 'Accept-Language': 'zh-CN,zh;q=0.9' } }
+    )
+    if (!res.ok) return ''
+    const data = await res.json()
+    if (!data) return ''
+    const addr = data.address || {}
+    const main = addr.neighbourhood || addr.suburb || addr.residential || addr.road || data.name
+    const region = addr.city || addr.town || addr.county || addr.state_district
+    if (main && region && main !== region) return main + ' · ' + region
+    return main || region || (data.display_name ? data.display_name.split(',').slice(0, 2).join('，') : '')
+  } catch {
+    return ''
+  }
+}
+
+const requestLocation = ({ silent = false } = {}) => {
+  if (!geoSupported) return
+  if (!silent) locating.value = true
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords
+      const address = await reverseGeocode(latitude, longitude)
+      userStore.setCurrentLocation({
+        lat: latitude,
+        lng: longitude,
+        address: address || `当前位置(${latitude.toFixed(3)}, ${longitude.toFixed(3)})`
+      })
+      hasRealLocation.value = true
+      locating.value = false
+      if (!silent) {
+        showAddressSwitcher.value = false
+        showToast({ content: '已定位到当前位置', type: 'success' })
+      }
+    },
+    () => {
+      locating.value = false
+      if (!silent) {
+        showToast({ content: '无法获取当前位置，请选择常用地址' })
+      }
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+  )
+}
+
+const handleRelocate = () => {
+  if (locating.value) return
+  requestLocation()
+}
+
 const handleScroll = (e) => {
   const target = e.target
   if (target.scrollTop + target.clientHeight >= target.scrollHeight - 50) {
@@ -486,7 +540,8 @@ const handleScroll = (e) => {
 const loadMore = () => {
   loading.value = true
   setTimeout(() => {
-    orderStore.loadMoreHotspots()
+    const loc = currentLocation.value
+    orderStore.loadMoreHotspots({ lat: loc.lat, lng: loc.lng })
     renderHotspots()
     loading.value = false
     if (filteredHotspots.value.length >= 30) {
@@ -563,11 +618,16 @@ watch(
 watch(
   () => userStore.currentLocation,
   (loc) => {
-    if (!map || !loc) return
-    map.setView([loc.lat, loc.lng], 14, { animate: true })
-    if (userMarker) {
-      userMarker.setLatLng([loc.lat, loc.lng])
+    if (!loc) return
+    if (map) {
+      map.setView([loc.lat, loc.lng], 14, { animate: true })
+      if (userMarker) {
+        userMarker.setLatLng([loc.lat, loc.lng])
+      }
     }
+    orderStore.refreshHotspots({ lat: loc.lat, lng: loc.lng })
+    hasMore.value = true
+    if (map) renderHotspots()
   },
   { deep: true }
 )
@@ -578,6 +638,9 @@ onMounted(() => {
     orderList.value.addEventListener('touchstart', handleTouchStart, { passive: true })
     orderList.value.addEventListener('touchmove', handleTouchMove, { passive: true })
     orderList.value.addEventListener('touchend', handleTouchEnd, { passive: true })
+  }
+  if (geoSupported) {
+    requestLocation({ silent: true })
   }
 })
 </script>
@@ -1230,6 +1293,68 @@ onMounted(() => {
     flex: 1;
     overflow-y: auto;
     padding: 12px 16px;
+  }
+
+  .switcher-locate {
+    display: flex;
+    align-items: center;
+    padding: 14px;
+    background: rgba(25, 137, 250, 0.06);
+    border: 1px dashed #1989fa;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+
+    &.locating {
+      opacity: 0.7;
+    }
+
+    .switcher-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #e6f4ff;
+      border-radius: 10px;
+      font-size: 18px;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+
+    .switcher-info {
+      flex: 1;
+      min-width: 0;
+
+      .switcher-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1989fa;
+        margin-bottom: 2px;
+      }
+
+      .switcher-sub {
+        font-size: 12px;
+        color: #666;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .switcher-check {
+      flex-shrink: 0;
+      margin-left: 8px;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1989fa;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 13px;
+    }
   }
 
   .switcher-item {

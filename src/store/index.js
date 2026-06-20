@@ -331,26 +331,28 @@ export const useOrderStore = defineStore('order', {
         hotspot.status = 'ignored'
       }
     },
-    refreshHotspots() {
+    refreshHotspots(center = { lat: 31.2304, lng: 121.4737 }) {
+      const { lat, lng } = center
       const newHotspots = mockHotspots.map((h, idx) => ({
         ...h,
         id: 'HS' + Date.now() + idx,
-        lat: 31.2304 + (Math.random() - 0.5) * 0.05,
-        lng: 121.4737 + (Math.random() - 0.5) * 0.05,
+        lat: lat + (Math.random() - 0.5) * 0.05,
+        lng: lng + (Math.random() - 0.5) * 0.05,
         price: Math.floor(100 + Math.random() * 900),
         duration: (1 + Math.floor(Math.random() * 5)).toString(),
         status: 'pending'
       }))
       this.hotspots = newHotspots
     },
-    loadMoreHotspots() {
+    loadMoreHotspots(center = { lat: 31.2304, lng: 121.4737 }) {
+      const { lat, lng } = center
       const additionalHotspots = Array.from({ length: 5 }, (_, idx) => {
         const base = mockHotspots[idx % mockHotspots.length]
         return {
           ...base,
           id: 'HS' + Date.now() + 'EXTRA' + idx,
-          lat: 31.2304 + (Math.random() - 0.5) * 0.08,
-          lng: 121.4737 + (Math.random() - 0.5) * 0.08,
+          lat: lat + (Math.random() - 0.5) * 0.08,
+          lng: lng + (Math.random() - 0.5) * 0.08,
           price: Math.floor(100 + Math.random() * 900),
           duration: (1 + Math.floor(Math.random() * 5)).toString(),
           status: 'pending'
