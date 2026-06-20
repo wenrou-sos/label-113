@@ -164,7 +164,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useUserStore } from '@/store'
 import { useOrderStore } from '@/store'
 import { showToast } from '@nutui/nutui'
@@ -172,14 +172,28 @@ import { showToast } from '@nutui/nutui'
 const userStore = useUserStore()
 const orderStore = useOrderStore()
 
+let monthTicker = null
+
+onMounted(() => {
+  userStore.tickCurrentMonth()
+  monthTicker = setInterval(() => {
+    userStore.tickCurrentMonth()
+  }, 60 * 1000)
+})
+
+onBeforeUnmount(() => {
+  if (monthTicker) {
+    clearInterval(monthTicker)
+    monthTicker = null
+  }
+})
+
 const userStats = computed(() => userStore.userStats)
 const monthlyEarnings = computed(() => orderStore.monthlyEarnings)
 const monthlyGoalAmount = computed(() => {
   const goal = userStore.monthlyGoal
   if (!goal || !goal.month) return 0
-  const d = new Date()
-  const curMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  if (goal.month !== curMonth) return 0
+  if (goal.month !== userStore.currentMonth) return 0
   return goal.amount || 0
 })
 const goalPercent = computed(() => {
@@ -476,5 +490,215 @@ const earningList = computed(() => {
   font-size: 16px;
   font-weight: bold;
   color: #52c41a;
+}
+
+.goal-card {
+  margin: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #1989fa, #3f79ff);
+  border-radius: 16px;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(25, 137, 250, 0.25);
+
+  .goal-header {
+    margin-bottom: 12px;
+
+    .goal-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+
+      > span:first-child {
+        font-size: 14px;
+        font-weight: 500;
+        opacity: 0.95;
+      }
+
+      .goal-edit {
+        font-size: 12px;
+        opacity: 0.85;
+      }
+    }
+
+    .goal-amounts {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 13px;
+
+      .goal-target {
+        font-size: 18px;
+        font-weight: bold;
+      }
+
+      .goal-divider {
+        opacity: 0.7;
+      }
+
+      .goal-earned {
+        opacity: 0.95;
+      }
+
+      .goal-percent {
+        opacity: 0.95;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .goal-progress-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    overflow: hidden;
+
+    .goal-progress-fill {
+      height: 100%;
+      background: #fff;
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+  }
+
+  &.goal-empty {
+    background: linear-gradient(135deg, #e6f4ff, #f0f8ff);
+    color: #1989fa;
+    box-shadow: 0 2px 10px rgba(25, 137, 250, 0.1);
+
+    .goal-empty-content {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+
+      .goal-empty-icon {
+        font-size: 22px;
+      }
+
+      .goal-empty-text {
+        flex: 1;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .goal-empty-arrow {
+        font-size: 13px;
+        opacity: 0.85;
+      }
+    }
+  }
+}
+
+.goal-editor {
+  background: #fff;
+  padding-bottom: env(safe-area-inset-bottom);
+
+  .goal-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid #f0f0f0;
+
+    .goal-editor-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .goal-editor-close {
+      font-size: 24px;
+      color: #999;
+      line-height: 1;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  .goal-editor-body {
+    padding: 20px 16px;
+
+    .goal-editor-sub {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 14px;
+    }
+
+    .goal-editor-input-row {
+      display: flex;
+      align-items: center;
+      background: #f5f5f5;
+      border-radius: 12px;
+      padding: 0 14px;
+      margin-bottom: 16px;
+
+      .goal-editor-prefix {
+        font-size: 20px;
+        font-weight: 600;
+        color: #333;
+        margin-right: 6px;
+      }
+
+      .goal-editor-input {
+        flex: 1;
+        border: none;
+        outline: none;
+        background: transparent;
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        padding: 14px 0;
+
+        &::placeholder {
+          color: #bbb;
+          font-weight: 400;
+        }
+
+        /* Hide number input arrows */
+        &::-webkit-outer-spin-button,
+        &::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+      }
+    }
+
+    .goal-editor-presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+
+      .goal-editor-chip {
+        padding: 7px 16px;
+        border-radius: 18px;
+        background: #f5f5f5;
+        font-size: 13px;
+        color: #666;
+      }
+    }
+
+    .goal-editor-tip {
+      font-size: 12px;
+      color: #999;
+      line-height: 1.6;
+    }
+  }
+
+  .goal-editor-footer {
+    display: flex;
+    padding: 12px 16px;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+    gap: 12px;
+    border-top: 1px solid #f0f0f0;
+
+    :deep(.nut-button) {
+      flex: 1;
+    }
+  }
 }
 </style>

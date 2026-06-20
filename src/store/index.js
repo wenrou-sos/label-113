@@ -45,6 +45,10 @@ export const useUserStore = defineStore('user', {
     preferences: loadFromStorage(STORAGE_KEYS.PREFERENCES, { drinkTypes: [], talentTypes: [] }),
     savedAddresses: loadFromStorage(STORAGE_KEYS.SAVED_ADDRESSES, []),
     monthlyGoal: loadFromStorage(STORAGE_KEYS.MONTHLY_GOAL, { amount: 0, month: '' }),
+    currentMonth: (() => {
+      const d = new Date()
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    })(),
     currentLocation: {
       lat: 31.2304,
       lng: 121.4737,
@@ -155,13 +159,19 @@ export const useUserStore = defineStore('user', {
       this.currentLocation = { lat, lng, address }
     },
     setMonthlyGoal(amount) {
-      const d = new Date()
-      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const month = this.currentMonth
       this.monthlyGoal = {
         amount: Math.max(0, Number(amount) || 0),
         month
       }
       saveToStorage(STORAGE_KEYS.MONTHLY_GOAL, this.monthlyGoal)
+    },
+    tickCurrentMonth() {
+      const d = new Date()
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (month !== this.currentMonth) {
+        this.currentMonth = month
+      }
     },
     resetData() {
       this.userStats = { ...mockUserStats }
@@ -203,14 +213,15 @@ export const useOrderStore = defineStore('order', {
     hasActiveOrders: (state) => {
       return state.orders.some((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
     },
-    monthlyEarnings: (state) => {
-      const now = new Date()
-      const curYear = now.getFullYear()
-      const curMonth = now.getMonth()
+    monthlyEarnings(state) {
+      const userStore = useUserStore()
+      const [curYearStr, curMonthStr] = userStore.currentMonth.split('-')
+      const curYear = Number(curYearStr)
+      const curMonth = Number(curMonthStr) - 1
       let total = 0
       state.orders.forEach((order) => {
         if (order.status !== 'completed') return
-        const dateKey = getLocalDateKey(order.acceptTime)
+        const dateKey = getLocalDateKey(order.endTime || order.acceptTime)
         if (!dateKey) return
         const [y, m] = dateKey.split('-')
         if (Number(y) !== curYear || Number(m) - 1 !== curMonth) return
