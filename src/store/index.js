@@ -164,6 +164,37 @@ export const useOrderStore = defineStore('order', {
       return Object.keys(counter)
         .map((name) => ({ name, count: counter[name] }))
         .sort((a, b) => b.count - a.count)
+    },
+    calendarDailyData: (state) => {
+      const dateMap = {}
+      state.orders.forEach((order) => {
+        if (order.status === 'pending') return
+        const dateKey = order.acceptTime ? order.acceptTime.substring(0, 10) : null
+        if (!dateKey) return
+        if (!dateMap[dateKey]) {
+          dateMap[dateKey] = { orders: [], count: 0, earnings: 0 }
+        }
+        const ddFee = order.result?.designatedDriverFee || 0
+        dateMap[dateKey].orders.push(order)
+        dateMap[dateKey].count += 1
+        dateMap[dateKey].earnings += (order.price || 0) + ddFee
+      })
+      return dateMap
+    },
+    calendarMaxDailyEarnings: (state) => {
+      const dateMap = {}
+      state.orders.forEach((order) => {
+        if (order.status === 'pending') return
+        const dateKey = order.acceptTime ? order.acceptTime.substring(0, 10) : null
+        if (!dateKey) return
+        const ddFee = order.result?.designatedDriverFee || 0
+        dateMap[dateKey] = (dateMap[dateKey] || 0) + (order.price || 0) + ddFee
+      })
+      let max = 0
+      Object.values(dateMap).forEach((v) => {
+        if (v > max) max = v
+      })
+      return max
     }
   },
   actions: {
