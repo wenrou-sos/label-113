@@ -8,6 +8,32 @@
       <div class="placeholder"></div>
     </div>
 
+    <div v-if="monthlyGoalAmount > 0" class="goal-card" @click="openGoalEditor">
+      <div class="goal-header">
+        <div class="goal-label">
+          <span>🎯 本月目标</span>
+          <span class="goal-edit">修改 ›</span>
+        </div>
+        <div class="goal-amounts">
+          <span class="goal-target">¥{{ monthlyGoalAmount.toLocaleString() }}</span>
+          <span class="goal-divider">·</span>
+          <span class="goal-earned">已完成 ¥{{ Math.floor(monthlyEarnings).toLocaleString() }}</span>
+          <span class="goal-percent">({{ goalPercent }}%)</span>
+        </div>
+      </div>
+      <div class="goal-progress-bar">
+        <div class="goal-progress-fill" :style="{ width: goalPercent + '%' }"></div>
+      </div>
+    </div>
+
+    <div v-else class="goal-card goal-empty" @click="openGoalEditor">
+      <div class="goal-empty-content">
+        <span class="goal-empty-icon">🎯</span>
+        <span class="goal-empty-text">设置本月收益目标，看着更有奔头</span>
+        <span class="goal-empty-arrow">去设置 ›</span>
+      </div>
+    </div>
+
     <div class="summary-card">
       <div class="summary-header">
         <span class="summary-label">累计收益</span>
@@ -22,7 +48,7 @@
 
     <div class="stats-grid">
       <div class="grid-item">
-        <div class="grid-value">¥{{ Math.floor(userStats.totalEarnings * 0.3).toLocaleString() }}</div>
+        <div class="grid-value">¥{{ Math.floor(monthlyEarnings).toLocaleString() }}</div>
         <div class="grid-label">本月收益</div>
       </div>
       <div class="grid-item">
@@ -80,6 +106,60 @@
         </div>
       </div>
     </div>
+
+    <nut-popup
+      v-model:visible="showGoalEditor"
+      position="bottom"
+      round
+      :style="{ height: 'auto' }"
+    >
+      <div class="goal-editor">
+        <div class="goal-editor-header">
+          <div class="goal-editor-title">
+            {{ monthlyGoalAmount > 0 ? '修改本月目标' : '设置本月目标' }}
+          </div>
+          <div class="goal-editor-close" @click="showGoalEditor = false">×</div>
+        </div>
+
+        <div class="goal-editor-body">
+          <div class="goal-editor-sub">本月想赚多少钱？</div>
+          <div class="goal-editor-input-row">
+            <span class="goal-editor-prefix">¥</span>
+            <input
+              v-model="tempGoalAmount"
+              class="goal-editor-input"
+              type="number"
+              min="0"
+              step="100"
+              placeholder="5000"
+              autofocus
+            />
+          </div>
+          <div class="goal-editor-presets">
+            <span
+              v-for="preset in goalPresets"
+              :key="preset"
+              class="goal-editor-chip"
+              @click="tempGoalAmount = preset"
+            >
+              ¥{{ preset.toLocaleString() }}
+            </span>
+          </div>
+          <div class="goal-editor-tip">
+            💡 目标仅保存在本地，更换月份后可重新设置
+          </div>
+        </div>
+
+        <div class="goal-editor-footer">
+          <nut-button size="large" type="default" @click="handleClearGoal">
+            清除目标
+          </nut-button>
+          <nut-button size="large" type="primary" @click="handleSaveGoal">
+            确定
+          </nut-button>
+        </div>
+      </div>
+    </nut-popup>
   </div>
 </template>
 
@@ -87,11 +167,53 @@
 import { ref, computed } from 'vue'
 import { useUserStore } from '@/store'
 import { useOrderStore } from '@/store'
+import { showToast } from '@nutui/nutui'
 
 const userStore = useUserStore()
 const orderStore = useOrderStore()
 
 const userStats = computed(() => userStore.userStats)
+const monthlyEarnings = computed(() => orderStore.monthlyEarnings)
+const monthlyGoalAmount = computed(() => {
+  const goal = userStore.monthlyGoal
+  if (!goal || !goal.month) return 0
+  const d = new Date()
+  const curMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  if (goal.month !== curMonth) return 0
+  return goal.amount || 0
+})
+const goalPercent = computed(() => {
+  const target = monthlyGoalAmount.value
+  if (target <= 0) return 0
+  const pct = Math.round((monthlyEarnings.value / target) * 100)
+  return Math.min(100, pct)
+})
+
+const showGoalEditor = ref(false)
+const tempGoalAmount = ref('')
+const goalPresets = [3000, 5000, 8000, 10000, 15000, 20000]
+
+const openGoalEditor = () => {
+  tempGoalAmount.value = monthlyGoalAmount.value > 0 ? String(monthlyGoalAmount.value) : ''
+  showGoalEditor.value = true
+}
+
+const handleSaveGoal = () => {
+  const val = Number(tempGoalAmount.value)
+  if (isNaN(val) || val <= 0) {
+    showToast({ content: '请输入有效的目标金额' })
+    return
+  }
+  userStore.setMonthlyGoal(val)
+  showGoalEditor.value = false
+  showToast({ content: '目标已设置', type: 'success' })
+}
+
+const handleClearGoal = () => {
+  userStore.setMonthlyGoal(0)
+  showGoalEditor.value = false
+  showToast({ content: '已清除目标' })
+}
 
 const weekData = ref([
   { day: '周一', amount: 588 },

@@ -6,7 +6,8 @@ const STORAGE_KEYS = {
   USER_TAGS: 'drink_helper_user_tags',
   ORDERS: 'drink_helper_orders',
   PREFERENCES: 'drink_helper_preferences',
-  SAVED_ADDRESSES: 'drink_helper_saved_addresses'
+  SAVED_ADDRESSES: 'drink_helper_saved_addresses',
+  MONTHLY_GOAL: 'drink_helper_monthly_goal'
 }
 
 const loadFromStorage = (key, defaultValue) => {
@@ -43,6 +44,7 @@ export const useUserStore = defineStore('user', {
     tags: loadFromStorage(STORAGE_KEYS.USER_TAGS, [...mockTags]),
     preferences: loadFromStorage(STORAGE_KEYS.PREFERENCES, { drinkTypes: [], talentTypes: [] }),
     savedAddresses: loadFromStorage(STORAGE_KEYS.SAVED_ADDRESSES, []),
+    monthlyGoal: loadFromStorage(STORAGE_KEYS.MONTHLY_GOAL, { amount: 0, month: '' }),
     currentLocation: {
       lat: 31.2304,
       lng: 121.4737,
@@ -152,15 +154,26 @@ export const useUserStore = defineStore('user', {
     setCurrentLocation({ lat, lng, address }) {
       this.currentLocation = { lat, lng, address }
     },
+    setMonthlyGoal(amount) {
+      const d = new Date()
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      this.monthlyGoal = {
+        amount: Math.max(0, Number(amount) || 0),
+        month
+      }
+      saveToStorage(STORAGE_KEYS.MONTHLY_GOAL, this.monthlyGoal)
+    },
     resetData() {
       this.userStats = { ...mockUserStats }
       this.tags = [...mockTags]
       this.preferences = { drinkTypes: [], talentTypes: [] }
       this.savedAddresses = []
+      this.monthlyGoal = { amount: 0, month: '' }
       localStorage.removeItem(STORAGE_KEYS.USER_STATS)
       localStorage.removeItem(STORAGE_KEYS.USER_TAGS)
       localStorage.removeItem(STORAGE_KEYS.PREFERENCES)
       localStorage.removeItem(STORAGE_KEYS.SAVED_ADDRESSES)
+      localStorage.removeItem(STORAGE_KEYS.MONTHLY_GOAL)
     }
   }
 })
@@ -189,6 +202,21 @@ export const useOrderStore = defineStore('order', {
     },
     hasActiveOrders: (state) => {
       return state.orders.some((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
+    },
+    monthlyEarnings: (state) => {
+      const now = new Date()
+      const curYear = now.getFullYear()
+      const curMonth = now.getMonth()
+      let total = 0
+      state.orders.forEach((order) => {
+        if (order.status !== 'completed') return
+        const dateKey = getLocalDateKey(order.acceptTime)
+        if (!dateKey) return
+        const [y, m] = dateKey.split('-')
+        if (Number(y) !== curYear || Number(m) - 1 !== curMonth) return
+        total += (order.price || 0) + (order.result?.designatedDriverFee || 0)
+      })
+      return total
     },
     activeOrder: (state) => {
       return state.orders.find((o) => ['accepted', 'arrived', 'servicing'].includes(o.status))
